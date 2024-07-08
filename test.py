@@ -1,39 +1,42 @@
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer, TrainingArguments
-from datasets import load_dataset
+import torch
+import torchvision
+from PIL import Image
+from torch import nn
 
-# 加载模型和tokenizer
-model_name = "distilbert/distilbert-base-uncased-finetuned-sst-2-english"
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForSequenceClassification.from_pretrained(model_name)
+image_path = "../imgs/airplane.png"
+image = Image.open(image_path)
+print(image)
+image = image.convert('RGB')
+transform = torchvision.transforms.Compose([torchvision.transforms.Resize((32, 32)),torchvision.transforms.ToTensor()])
 
-# 加载数据集
-dataset = load_dataset("sst2")
+image = transform(image)
+print(image.shape)
 
-# 数据预处理函数
-def preprocess_function(examples):
-    return tokenizer(examples['sentence'], truncation=True, padding='max_length')
+class Tudui(nn.Module):
+    def __init__(self):
+        super(Tudui, self).__init__()
+        self.model = nn.Sequential(
+            nn.Conv2d(3, 32, 5, 1, 2),
+            nn.MaxPool2d(2),
+            nn.Conv2d(32, 32, 5, 1, 2),
+            nn.MaxPool2d(2),
+            nn.Conv2d(32, 64, 5, 1, 2),
+            nn.MaxPool2d(2),
+            nn.Flatten(),
+            nn.Linear(64*4*4, 64),
+            nn.Linear(64, 10)
+        )
 
-# 应用数据预处理
-encoded_dataset = dataset.map(preprocess_function, batched=True)
+    def forward(self, x):
+        x = self.model(x)
+        return x
 
-# 定义训练参数
-training_args = TrainingArguments(
-    output_dir='./results',
-    evaluation_strategy="epoch",
-    learning_rate=2e-5,
-    per_device_train_batch_size=16,
-    per_device_eval_batch_size=16,
-    num_train_epochs=3,
-    weight_decay=0.01,
-)
+model = torch.load("tudui_29_gpu.pth", map_location=torch.device('cpu'))
+print(model)
+image = torch.reshape(image, (1, 3, 32, 32))
+model.eval()
+with torch.no_grad():
+    output = model(image)
+print(output)
 
-# 创建Trainer
-trainer = Trainer(
-    model=model,
-    args=training_args,
-    train_dataset=encoded_dataset['train'],
-    eval_dataset=encoded_dataset['validation'],
-)
-
-# 开始训练
-trainer.train()
+print(output.argmax(1))
